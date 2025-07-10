@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:multi_image_picker_view/multi_image_picker_view.dart';
 import 'package:image_picker/image_picker.dart';
 import '../api/model_downloader.dart';
 import '../services/image_classifier.dart';
+import '../services/multi_image_controller.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,7 +15,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ImageClassifier _classifier = ImageClassifier();
-  final ImagePicker _picker = ImagePicker();
+  final MyMultiImageController _multiImageController = MyMultiImageController();
+  List<String?> _classificationResults = [];
 
   String _statusMessage = '앱이 준비되었습니다.';
   String? _classificationResult;
@@ -78,19 +81,24 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _pickAndClassifyImage() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-    if (image == null) return;
+  // 여러 장의 이미지를 분류하는 함수
+  Future<void> _pickAndClassifyImages() async {
+    final ImagePicker picker = ImagePicker();
+    final List<XFile>? images = await picker.pickMultiImage();
+    if (images == null || images.isEmpty) return;
 
     setState(() {
-      _selectedImage = File(image.path);
       _statusMessage = '이미지를 분류 중입니다...';
-      _classificationResult = null;
+      _classificationResults = [];
     });
 
-    final result = await _classifier.classifyImage(_selectedImage!);
+    for (final image in images) {
+      final file = File(image.path);
+      final result = await _classifier.classifyImage(file);
+      _classificationResults.add(result);
+    }
+
     setState(() {
-      _classificationResult = result;
       _statusMessage = '분류 완료!';
     });
   }
@@ -112,11 +120,21 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             Text(_statusMessage, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 10),
-            if (_classificationResult != null)
-              Text(
-                '분류 결과: $_classificationResult',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.blue),
+            if (_classificationResults.isNotEmpty)
+              SizedBox(
+                height: 120,
+                child: ListView.builder(
+                  itemCount: _classificationResults.length,
+                  itemBuilder: (context, index) {
+                    final label = _classificationResults[index];
+                    return Text(
+                      '이미지 ${index + 1}: $label',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.blue),
+                    );
+                  },
+                ),
               ),
+
             const SizedBox(height: 30),
             if (!_isModelReady)
               ElevatedButton.icon(
@@ -128,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ElevatedButton.icon(
                 icon: const Icon(Icons.photo_library),
                 label: const Text('2. 사진 선택 및 분류'),
-                onPressed: _pickAndClassifyImage,
+                onPressed: _pickAndClassifyImages,
               ),
           ],
         ),
